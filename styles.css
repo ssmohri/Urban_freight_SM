@@ -1,0 +1,172 @@
+/* =========================
+   Global layout & basics
+   ========================= */
+.block-container {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 38px !important;   /* ~1 cm margin */
+  margin: 0 !important;
+}
+section.main > div { padding-top: 0; padding-bottom: 0; }
+h1, h2, h3 { margin: 0.15rem 0 0.35rem 0; }
+hr { margin: 6px 0; }
+#MainMenu, footer { visibility: hidden; }
+
+/* Smaller DataFrame spacing */
+[data-testid="stDataFrame"] { margin-top: 4px; }
+
+/* =========================
+   Generic “card” look
+   ========================= */
+.card {
+  border: 1px solid rgba(148,163,184,.35);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+.pilltitle { font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 0.95rem; }
+.knob-label { font-size: 0.85rem; color: #334155; font-weight: 600; margin-bottom: 2px; }
+.sub { color: #64748b; font-size: 0.8rem; }
+.divider { height: 1px; background: #E2E8F0; margin: 6px 0 8px; }
+
+/* =========================
+   Dual-color fuel bar
+   ========================= */
+.dualbar {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #94a3b8;
+}
+.dualbar-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+/* =========================
+   Home page layout
+   ========================= */
+.home-top-gap { height: 38px; } /* pushes layout down once (~1cm) */
+
+.home-left-info {
+  min-height: 540px;                 /* tall left panel */
+  display: flex;
+  flex-direction: column;
+}
+.home-left-body { margin-top: 6px; }
+.home-left-list { margin: 6px 0 0 18px; }
+
+.home-hero {
+  padding: 18px !important;
+  margin-bottom: 16px;
+}
+.home-hero-sub {
+  color: #334155;
+  margin: .35rem 0 0 0;
+  font-size: 0.95rem;
+}
+
+/* Module cards (4 squares) */
+.module-card {
+  min-height: 170px;                 /* square-ish */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+.module-card .sub { margin-top: 4px; }
+.module-card-actions { margin-top: 8px; }
+
+/* Larger module titles */
+.module-card .pilltitle {
+  font-size: 1.85rem;                /* bump from ~0.95rem */
+  line-height: 1.2;
+}
+
+/* Translucent/frosted effect so background peeks through */
+.home-left-info,
+.home-hero,
+.module-card {
+  background: rgba(255, 255, 255, 0.78) !important;   /* adjust alpha to taste */
+  backdrop-filter: saturate(120%) blur(2px);          /* frosted look */
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Make the four module cards slightly more transparent than hero/left */
+.module-card { background: rgba(255, 255, 255, 0.72) !important; }
+
+/* Disabled-looking static button on home cards */
+.btn.btn-disabled {
+  width: 100%;
+  background: rgba(241, 245, 249, 0.7);
+  color: #94a3b8;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: not-allowed;
+}
+.btn.btn-disabled:disabled { opacity: 1; }
+
+/* Extra-narrow panel width */
+.panel-wrap-half {
+  max-width: 320px;        /* ↓ make even narrower if you like (e.g., 300px) */
+  width: 100%;
+}
+
+/* Smaller gaps between tiny columns */
+.block-container .element-container [data-testid="stHorizontalBlock"] > div {
+  gap: 6px !important;     /* makes gap="xsmall" feel tighter across devices */
+}
+
+/* Left UI: compact fonts & controls only inside the dashboard column */
+#left-ui {
+  font-size: 0.92rem;
+}
+#left-ui h4, #left-ui h5, #left-ui .stMarkdown p {
+  font-size: 0.95rem;
+  margin: 0 0 4px 0;
+}
+#left-ui label, 
+#left-ui [data-testid="stMarkdown"] {
+  font-size: 0.9rem;
+}
+#left-ui .stSlider, 
+#left-ui .stNumberInput, 
+#left-ui .stCheckbox, 
+#left-ui .stToggle {
+  margin-top: 6px !important;
+  margin-bottom: 6px !important;
+}
+
+/* Make the dualbar slightly slimmer inside the narrow panel */
+#left-ui .dualbar { height: 24px !important; }
+#left-ui .dualbar-labels { font-size: .87rem !important; }
+
+/* Tighten the two tab rows spacing */
+#left-ui .stButton > button {
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+/* styles.css additions (if missing) */
+.panel-card{
+  background: rgba(255,255,255,0.78);
+  backdrop-filter: saturate(120%) blur(2px);
+  border:1px solid rgba(148,163,184,.35);
+  border-radius:12px;
+  padding:12px;
+  box-shadow:0 10px 24px rgba(0,0,0,.08);
+  margin-bottom: 10px;
+}
+.panel-title{
+  font-weight:700;
+  margin: 4px 0 8px 0;
+}
