@@ -1,0 +1,14 @@
+{
+  "ASC_accept": 16.54376295,
+  "B_Next_vs_standard_increase": 1.81288799,
+  "B_Same_vs_standard_increase": -0.10418132,
+  "B_Delivery_fee_small": -2.980096,
+  "B_Delivery_fee_Medium": -0.94334106,
+  "B_Diesel_van": -0.00681763,
+  "B_Micro_hub_with_bike": 0.5877109,
+  "B_Off_peak": 1.07487673,
+  "B_Insurance": -1.5581777,
+  "B_Tracking": 0.62774251,
+  "B_Redelivery": 0.59298543,
+  "B_Signature": 1.56051803
+}
