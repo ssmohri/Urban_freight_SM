@@ -324,11 +324,11 @@ def render_carrier():
     @st.cache_resource
     def load_models_static():
         # These functions now load from JSON files next to app.py
-        from Ship_choice import (
+        from Ship_choice_pre_estimate import (
             run_shippers_choice_model,
             calculate_probability_of_selecting_by_shippers,
         )
-        from Recip_choice import (
+        from Recip_choice_pre_estimate import (
             run_recipients_choice_model,
             calculate_probability_of_selecting_by_recipients,
         )
@@ -602,3 +602,4 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
