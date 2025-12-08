@@ -7,6 +7,98 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 from base64 import b64encode
+# -------- Player persistence (CSV) --------
+import csv
+from datetime import datetime
+
+PLAYERS_CSV_PATH = Path(__file__).with_name("players.csv")
+
+PLAYER_FIELDS = [
+    "email",
+    "created_at",
+    "updated_at",
+    "best_profit_one_year",
+    "best_profit_round_id",
+    "best_emission_one_year",
+    "best_emission_round_id",
+]
+
+def _ensure_players_csv():
+    if not PLAYERS_CSV_PATH.exists():
+        with open(PLAYERS_CSV_PATH, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=PLAYER_FIELDS)
+            writer.writeheader()
+
+def _load_players() -> dict:
+    _ensure_players_csv()
+    rows = {}
+    with open(PLAYERS_CSV_PATH, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for r in reader:
+            rows[r["email"].strip().lower()] = r
+    return rows
+
+def _save_players(rows: dict):
+    with open(PLAYERS_CSV_PATH, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=PLAYER_FIELDS)
+        writer.writeheader()
+        for r in rows.values():
+            writer.writerow(r)
+
+def get_or_create_player(email: str) -> dict:
+    email_key = email.strip().lower()
+    rows = _load_players()
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    if email_key not in rows:
+        rows[email_key] = {
+            "email": email_key,
+            "created_at": now,
+            "updated_at": now,
+            "best_profit_one_year": "",
+            "best_profit_round_id": "",
+            "best_emission_one_year": "",
+            "best_emission_round_id": "",
+        }
+        _save_players(rows)
+    return rows[email_key]
+
+def update_player_best(email: str, *, round_id: int,
+                       profit_one_year: float, emission_one_year: float):
+    email_key = email.strip().lower()
+    rows = _load_players()
+    if email_key not in rows:
+        # safety: create if missing
+        get_or_create_player(email_key)
+        rows = _load_players()
+
+    rec = rows[email_key]
+    changed = False
+
+    # Highest profit (1Y)
+    try:
+        prev_profit = float(rec["best_profit_one_year"])
+    except Exception:
+        prev_profit = float("-inf")
+    if profit_one_year > prev_profit:
+        rec["best_profit_one_year"] = f"{profit_one_year:.6g}"
+        rec["best_profit_round_id"] = str(round_id)
+        changed = True
+
+    # Lowest emission (1Y)
+    try:
+        prev_emis = float(rec["best_emission_one_year"])
+    except Exception:
+        prev_emis = float("inf")
+    if emission_one_year < prev_emis:
+        rec["best_emission_one_year"] = f"{emission_one_year:.6g}"
+        rec["best_emission_round_id"] = str(round_id)
+        changed = True
+
+    if changed:
+        rec["updated_at"] = datetime.utcnow().isoformat(timespec="seconds")
+        rows[email_key] = rec
+        _save_players(rows)
+    return changed
 
 # ---------- Background helpers ----------
 def _data_uri_for(name_no_ext: str) -> Optional[str]:
@@ -580,3 +672,4 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
