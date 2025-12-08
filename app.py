@@ -310,6 +310,8 @@ def render_home():
         )
 
         g1, g2 = st.columns(2, gap="large")
+
+        # -------- Parcel Recipient card (unchanged) --------
         with g1:
             st.markdown(
                 """
@@ -323,6 +325,8 @@ def render_home():
                 """,
                 unsafe_allow_html=True,
             )
+
+        # -------- Carrier Game card with email gate --------
         with g2:
             st.markdown(
                 """
@@ -333,8 +337,28 @@ def render_home():
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button("Enter Carrier Game", key="btn_carrier", type="primary", use_container_width=True):
-                go_carrier()
+
+            # Email gate
+            email = st.text_input(
+                "Enter your email to play",
+                key="gate_email",
+                placeholder="name@example.com",
+            )
+            enter_clicked = st.button(
+                "Enter Carrier Game",
+                key="btn_carrier",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if enter_clicked:
+                if not email or "@" not in email:
+                    st.error("Please enter a valid email address.")
+                else:
+                    rec = get_or_create_player(email)
+                    st.session_state["player_email"] = rec["email"]
+                    go_carrier()
+
             st.markdown("</div></div>", unsafe_allow_html=True)
 
         r2c1, r2c2 = st.columns(2, gap="large")
@@ -686,5 +710,6 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
