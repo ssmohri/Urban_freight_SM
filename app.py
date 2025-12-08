@@ -636,6 +636,20 @@ def render_carrier():
             st.session_state.current_round = curr + 1
             st.success(f"Round {curr} appended.")
 
+        # --- Persist best profit & lowest emission (1Y horizon) for this player ---
+        player_email = st.session_state.get("player_email", "").strip().lower()
+        if player_email:
+            profit_1y = float(row.get("Total_profit_one_year", 0.0))
+            emis_1y   = float(row.get("Total_emission_one_year", 0.0))
+            changed = update_player_best(
+                player_email,
+                round_id=curr,
+                profit_one_year=profit_1y,
+                emission_one_year=emis_1y,
+            )
+            if changed:
+                st.toast("🔖 Your best results have been updated.", icon="✅")
+
     # ===== RIGHT: charts + tables =====
     with main:
         render_charts_and_tables(st.session_state.rounds_results.copy(), latest_inputs_series, curr)
@@ -672,4 +686,5 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
