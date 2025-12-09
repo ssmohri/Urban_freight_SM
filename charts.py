@@ -21,7 +21,6 @@ def _apply_scientific(ax):
     sf.set_powerlimits((0, 0))
     ax.yaxis.set_major_formatter(sf)
 
-
 def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series, curr: int):
     if rounds_data_all.empty:
         st.info("Run a round to populate charts.")
@@ -46,6 +45,7 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
     for c in [
         "Total_profit_two_months", "Total_profit_one_year", "Total_profit_five_year",
         "Total_emission_two_months", "Total_emission_one_year", "Total_emission_five_year",
+        "Total_demand_two_months", "Total_demand_one_year", "Total_demand_five_year",
     ]:
         if c in rounds_data:
             rounds_data[c] = pd.to_numeric(rounds_data[c], errors="coerce")
@@ -53,29 +53,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
     # Prepare X
     X = rounds_data["Round ID"].astype(int).to_numpy()
     xticks_vals = sorted(rounds_data["Round ID"].astype(int).unique().tolist())
-
-    # ----- Demand denominators (prefer period-specific; fall back to daily demand * days) -----
-    def _den_or_none(colname_period: str, days: int):
-        """Return a Series denominator if we can compute it, else None."""
-        if colname_period in rounds_data:
-            return pd.to_numeric(rounds_data[colname_period], errors="coerce")
-        if "Total_demand" in rounds_data:
-            return pd.to_numeric(rounds_data["Total_demand"], errors="coerce") * float(days)
-        return None
-
-    den_2m = _den_or_none("Total_demand_two_months", 60)
-    den_1y = _den_or_none("Total_demand_one_year", 365)
-    den_5y = _den_or_none("Total_demand_five_year", 1825)
-
-    # We only switch to "per demand" mode if denominators exist for all displayed series
-    need_2m = show_2m and "Total_profit_two_months" in rounds_data and "Total_emission_two_months" in rounds_data
-    need_1y = show_1y and "Total_profit_one_year" in rounds_data and "Total_emission_one_year" in rounds_data
-    need_5y = show_5y and "Total_profit_five_year" in rounds_data and "Total_emission_five_year" in rounds_data
-
-    per_demand_ready = True
-    if need_2m and den_2m is None: per_demand_ready = False
-    if need_1y and den_1y is None: per_demand_ready = False
-    if need_5y and den_5y is None: per_demand_ready = False
 
     # Top spacer (~1 cm)
     st.markdown('<div style="height:38px;"></div>', unsafe_allow_html=True)
@@ -95,7 +72,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
         "lines.markersize": 4,
         "figure.dpi": 160,  # higher resolution
     }):
-        # Slightly smaller than your original, crisp, with clear gaps
         fig, axes = plt.subplots(1, 2, figsize=(8.0, 2.6))
 
         def prettify(ax, title, ylab):
@@ -110,60 +86,68 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
             for spine in ax.spines.values():
                 spine.set_linewidth(0.8)
                 spine.set_alpha(0.6)
-            _apply_scientific(ax)  # scientific y-axis
+            _apply_scientific(ax)
 
-        # Helper: safe division (vectorized)
-        def _div(numer, denom):
-            if denom is None:
-                return numer.to_numpy()
-            d = np.maximum(denom.to_numpy().astype(float), 1e-9)
-            return numer.to_numpy().astype(float) / d
+        def _safe_div(num_col: str, den_col: str):
+            """Return numpy array of num/den, or None if columns missing."""
+            if num_col not in rounds_data.columns or den_col not in rounds_data.columns:
+                return None
+            num = rounds_data[num_col].to_numpy(dtype=float)
+            den = rounds_data[den_col].replace(0, np.nan).to_numpy(dtype=float)
+            return num / den
 
-        # ---------------- Profit (per demand if ready; else totals) ----------------
+        # ---------------- Profit per parcel ----------------
         axp = axes[0]
-        if per_demand_ready:
-            if show_2m and "Total_profit_two_months" in rounds_data:
-                axp.plot(X, _div(rounds_data["Total_profit_two_months"], den_2m), marker="o", label="2M")
-            if show_1y and "Total_profit_one_year" in rounds_data:
-                axp.plot(X, _div(rounds_data["Total_profit_one_year"], den_1y), marker="s", label="1Y")
-            if show_5y and "Total_profit_five_year" in rounds_data:
-                axp.plot(X, _div(rounds_data["Total_profit_five_year"], den_5y), marker="D", label="5Y")
-            prettify(axp, "Profit per demand", "AUD / parcel")
-        else:
-            if show_2m and "Total_profit_two_months" in rounds_data:
-                axp.plot(X, rounds_data["Total_profit_two_months"].to_numpy(), marker="o", label="2M")
-            if show_1y and "Total_profit_one_year" in rounds_data:
-                axp.plot(X, rounds_data["Total_profit_one_year"].to_numpy(), marker="s", label="1Y")
-            if show_5y and "Total_profit_five_year" in rounds_data:
-                axp.plot(X, rounds_data["Total_profit_five_year"].to_numpy(), marker="D", label="5Y")
-            prettify(axp, "Profit", "AUD")
+        plotted_any_profit = False
 
-        if any([show_2m, show_1y, show_5y]):
+        if show_2m:
+            y = _safe_div("Total_profit_two_months", "Total_demand_two_months")
+            if y is not None:
+                axp.plot(X, y, marker="o", label="2M")
+                plotted_any_profit = True
+
+        if show_1y:
+            y = _safe_div("Total_profit_one_year", "Total_demand_one_year")
+            if y is not None:
+                axp.plot(X, y, marker="s", label="1Y")
+                plotted_any_profit = True
+
+        if show_5y:
+            y = _safe_div("Total_profit_five_year", "Total_demand_five_year")
+            if y is not None:
+                axp.plot(X, y, marker="D", label="5Y")
+                plotted_any_profit = True
+
+        prettify(axp, "Profit per parcel", "AUD / parcel")
+        if plotted_any_profit:
             axp.legend(loc="best", frameon=False)
 
-        # ---------------- Emissions (per demand if ready; else totals) ----------------
+        # ---------------- Emissions per parcel ----------------
         axe = axes[1]
-        if per_demand_ready:
-            if show_2m and "Total_emission_two_months" in rounds_data:
-                axe.plot(X, _div(rounds_data["Total_emission_two_months"], den_2m), marker="o", label="2M")
-            if show_1y and "Total_emission_one_year" in rounds_data:
-                axe.plot(X, _div(rounds_data["Total_emission_one_year"], den_1y), marker="s", label="1Y")
-            if show_5y and "Total_emission_five_year" in rounds_data:
-                axe.plot(X, _div(rounds_data["Total_emission_five_year"], den_5y), marker="D", label="5Y")
-            prettify(axe, "Emissions per demand", "Cost / parcel (proxy)")
-        else:
-            if show_2m and "Total_emission_two_months" in rounds_data:
-                axe.plot(X, rounds_data["Total_emission_two_months"].to_numpy(), marker="o", label="2M")
-            if show_1y and "Total_emission_one_year" in rounds_data:
-                axe.plot(X, rounds_data["Total_emission_one_year"].to_numpy(), marker="s", label="1Y")
-            if show_5y and "Total_emission_five_year" in rounds_data:
-                axe.plot(X, rounds_data["Total_emission_five_year"].to_numpy(), marker="D", label="5Y")
-            prettify(axe, "Emissions", "Cost (proxy)")
+        plotted_any_emis = False
 
-        if any([show_2m, show_1y, show_5y]):
+        if show_2m:
+            y = _safe_div("Total_emission_two_months", "Total_demand_two_months")
+            if y is not None:
+                axe.plot(X, y, marker="o", label="2M")
+                plotted_any_emis = True
+
+        if show_1y:
+            y = _safe_div("Total_emission_one_year", "Total_demand_one_year")
+            if y is not None:
+                axe.plot(X, y, marker="s", label="1Y")
+                plotted_any_emis = True
+
+        if show_5y:
+            y = _safe_div("Total_emission_five_year", "Total_demand_five_year")
+            if y is not None:
+                axe.plot(X, y, marker="D", label="5Y")
+                plotted_any_emis = True
+
+        prettify(axe, "Emissions per parcel", "Cost / parcel (proxy)")
+        if plotted_any_emis:
             axe.legend(loc="best", frameon=False)
 
-        # Clear 1cm gap between charts and to the right window edge
         fig.subplots_adjust(left=0.08, right=0.95, bottom=0.22, top=0.88, wspace=0.5)
 
         # Invisible anchors for the tour (near the figures)
@@ -174,15 +158,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
         finally:
             plt.close(fig)
 
-    # If we had to fall back, tell the user why
-    if not per_demand_ready:
-        st.info(
-            "Showing totals because per-demand denominators were not found. "
-            "Add either period demand columns "
-            "(`Total_demand_two_months`, `Total_demand_one_year`, `Total_demand_five_year`) "
-            "or a daily `Total_demand` column so charts can display per-parcel values."
-        )
-
     # Bottom spacer (~1 cm)
     st.markdown('<div style="height:38px;"></div>', unsafe_allow_html=True)
 
@@ -190,7 +165,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
     t_l, t_r = st.columns([1, 2], gap="small")
 
     with t_l:
-        # Inputs panel (translucent like home cards)
         st.markdown('<div class="panel-card">', unsafe_allow_html=True)
         st.markdown('<div id="inputs-table"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Inputs (this round)</div>', unsafe_allow_html=True)
@@ -203,14 +177,12 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
         st.markdown('</div>', unsafe_allow_html=True)
 
     with t_r:
-        # Outputs + download + upload (all inside same panel)
         st.markdown('<div class="panel-card">', unsafe_allow_html=True)
         st.markdown('<div id="outputs-table"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Outputs (displayed rounds)</div>', unsafe_allow_html=True)
 
         st.dataframe(rounds_data, use_container_width=True, height=220)
 
-        # Download current view
         csv = rounds_data.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download CSV (displayed)",
@@ -220,7 +192,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
             use_container_width=True,
         )
 
-        # Upload previous rounds
         st.markdown("### 🔼 Upload previous rounds")
         uploaded_file = st.file_uploader(
             "Upload a CSV of previous rounds (exported earlier from this app)",
@@ -228,15 +199,12 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
             key="round_upload"
         )
 
-        # Process the uploaded file exactly once per file content
         if uploaded_file is not None:
             try:
-                # compute a stable hash for this file content
                 import hashlib
                 file_bytes = uploaded_file.getvalue()
                 file_hash = hashlib.md5(file_bytes).hexdigest()
 
-                # guard: if we've already processed this exact file, skip
                 last_hash = st.session_state.get("last_uploaded_rounds_hash")
                 if last_hash != file_hash:
                     uploaded_df = pd.read_csv(uploaded_file)
@@ -245,17 +213,14 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
                         "Round ID",
                         "Total_profit_two_months", "Total_profit_one_year", "Total_profit_five_year",
                         "Total_emission_two_months", "Total_emission_one_year", "Total_emission_five_year",
-                        # Note: we keep demand columns optional to support old CSVs.
                     ]
                     missing = [c for c in required_for_charts if c not in uploaded_df.columns]
                     if missing:
                         st.error(f"❌ Uploaded CSV is missing required columns for charts: {missing}")
                     else:
-                        # Coerce numeric columns so plotting won't break
                         for c in required_for_charts:
                             uploaded_df[c] = pd.to_numeric(uploaded_df[c], errors="coerce")
 
-                        # Merge into session results (de-dup by Round ID)
                         st.session_state.rounds_results = (
                             pd.concat([st.session_state.rounds_results, uploaded_df], ignore_index=True)
                               .drop_duplicates(subset=["Round ID"], keep="last")
@@ -263,14 +228,12 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
                               .reset_index(drop=True)
                         )
 
-                        # Advance current round to next integer
                         max_round = pd.to_numeric(
                             st.session_state.rounds_results["Round ID"], errors="coerce"
                         ).max()
                         if pd.notna(max_round):
                             st.session_state.current_round = int(max_round) + 1
 
-                        # mark this file as processed
                         st.session_state["last_uploaded_rounds_hash"] = file_hash
                         st.success(f"✅ Imported {len(uploaded_df)} rows. Charts above are now using them.")
                 else:
@@ -278,5 +241,6 @@ def render_charts_and_tables(rounds_data_all: pd.DataFrame, latest_inputs_series
             except Exception as e:
                 st.error(f"⚠️ Failed to read uploaded file: {e}")
 
-        # Close the panel wrapper
         st.markdown('</div>', unsafe_allow_html=True)
+
+
