@@ -395,6 +395,19 @@ def render_home():
 def render_carrier():
     _ensure_defaults()
     _apply_carrier_background()
+ # ---- SHOW PLAYER INFO IF LOGGED IN ----
+    player_email = st.session_state.get("player_email", "")
+    if player_email:
+        rec = get_or_create_player(player_email)
+        st.caption(
+            f"Player: **{player_email}** | Best profit (1Y): "
+            f"{rec.get('best_profit_one_year') or '—'} "
+            f"(Round {rec.get('best_profit_round_id') or '—'}) • Lowest emission (1Y): "
+            f"{rec.get('best_emission_one_year') or '—'} "
+            f"(Round {rec.get('best_emission_round_id') or '—'})"
+        )
+    else:
+        st.warning("⚠️ No email detected. Go back and enter your email to track your results.")
 
     # CSS: give Streamlit containers a translucent white background when they contain a sentinel.
     # Also give H4/H5 headings a soft background so titles are readable over the image.
@@ -720,6 +733,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
