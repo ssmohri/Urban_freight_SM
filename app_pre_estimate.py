@@ -103,14 +103,19 @@ def get_players_worksheet():
 
     return ws
 
-
 def _load_players_with_rows() -> dict:
     """
     Read all players from Google Sheets and return a dict:
       { email_lower: {field: value, ..., "_row": sheet_row_number} }
+
+    Uses expected_headers=PLAYER_FIELDS so we don't crash if the
+    actual header row has duplicate labels or weird formatting.
     """
     ws = get_players_worksheet()
-    rows = ws.get_all_records()
+
+    # Use our own header definition to avoid "header row is not unique" errors
+    rows = ws.get_all_records(expected_headers=PLAYER_FIELDS)
+
     players = {}
     for idx, r in enumerate(rows, start=2):  # data starts at row 2
         email_key = str(r.get("email", "")).strip().lower()
@@ -119,6 +124,7 @@ def _load_players_with_rows() -> dict:
         r["_row"] = idx
         players[email_key] = r
     return players
+
 
 def _write_player_record(rec: dict):
     """
@@ -1029,4 +1035,5 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
