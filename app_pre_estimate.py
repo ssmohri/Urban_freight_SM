@@ -155,7 +155,7 @@ def get_or_create_player(email: str) -> dict:
     now = datetime.utcnow().isoformat(timespec="seconds")
 
     if email_key in players:
-        # ✅ FIX: use dict indexing, not a function call
+        # ✅ correct: use dict indexing
         rec = players[email_key]
     else:
         # initialise all PLAYER_FIELDS as empty strings
@@ -1037,6 +1037,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
