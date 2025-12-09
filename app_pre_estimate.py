@@ -168,6 +168,7 @@ def _ensure_defaults():
     ss = st.session_state
     # routing
     ss.setdefault("page", "home")
+    ss.setdefault("player_email", "")
     # round/result state
     ss.setdefault("current_round", 1)
     ss.setdefault("rounds_results", pd.DataFrame())
@@ -689,13 +690,30 @@ def render_carrier():
             st.error(f"Round {curr} failed to compute.")
             st.exception(e); row = None
 
-        if row is not None:
+                if row is not None:
             st.session_state.rounds_results = pd.concat(
                 [st.session_state.rounds_results, pd.DataFrame([row])],
                 ignore_index=True
             )
             st.session_state.current_round = curr + 1
             st.success(f"Round {curr} appended.")
+
+            # ---- Update player personal bests (if we have an email) ----
+            player_email = st.session_state.get("player_email", "")
+            if player_email:
+                try:
+                    updated = update_player_best(
+                        player_email,
+                        round_id=curr,
+                        profit_one_year=row["Total_profit_one_year"],
+                        emission_one_year=row["Total_emission_one_year"],
+                    )
+                    if updated:
+                        st.info("🏅 Your personal best records were updated for this player.")
+                except Exception as e:
+                    st.warning("Round saved, but updating your personal bests failed.")
+                    st.exception(e)
+
 
     # ===== RIGHT: charts + tables =====
     with main:
@@ -733,6 +751,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
