@@ -13,6 +13,8 @@ from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
+st.caption("🔧 Running app_pre_estimate v4 – players fix + debug")
+
 # Columns we store per player in Google Sheets
 PLAYER_FIELDS = [
     "email",
@@ -1037,6 +1039,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
