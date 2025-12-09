@@ -7,13 +7,15 @@ import pandas as pd
 import streamlit as st
 from base64 import b64encode
 
+# ---------- Streamlit page & styles ----------
+st.set_page_config(page_title="Urban Freight Simulation Game", layout="wide")
+st.caption("🔧 Running app_pre_estimate v4 – players fix + debug")
+
 # -------- Google Sheets / Player persistence --------
 from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
-
-st.caption("🔧 Running app_pre_estimate v4 – players fix + debug")
 
 # Columns we store per player in Google Sheets
 PLAYER_FIELDS = [
@@ -466,9 +468,6 @@ from charts import render_charts_and_tables
 from constants import COLUMNS, init_environment
 
 # ---------- Streamlit page & styles ----------
-
-st.set_page_config(page_title="Urban Freight Simulation Game", layout="wide")
-
 _css_path = Path(__file__).with_name("styles.css")
 if _css_path.exists():
     st.markdown(f"<style>{_css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
@@ -1039,6 +1038,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
