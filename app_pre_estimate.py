@@ -18,10 +18,45 @@ PLAYER_FIELDS = [
     "email",
     "created_at",
     "updated_at",
+    # Existing totals
     "best_profit_one_year",
     "best_profit_round_id",
     "best_emission_one_year",
     "best_emission_round_id",
+
+    # NEW: per-parcel metrics
+    "best_profit_per_parcel",
+    "best_emission_per_parcel",
+
+    # NEW: attributes of best PROFIT per parcel
+    "best_profit_Next_vs_standard_increase",
+    "best_profit_Same_vs_standard_increase",
+    "best_profit_Delivery_fee_small",
+    "best_profit_Delivery_fee_Medium",
+    "best_profit_Delivery_fee_Large",
+    "best_profit_Diesel_van_share",
+    "best_profit_Electic_van_share",
+    "best_profit_Micro_hub_with_bike",
+    "best_profit_Off_peak_delivery",
+    "best_profit_Signature",
+    "best_profit_redlivery",
+    "best_profit_Tracking",
+    "best_profit_Insurance",
+
+    # NEW: attributes of best EMISSION per parcel
+    "best_emission_Next_vs_standard_increase",
+    "best_emission_Same_vs_standard_increase",
+    "best_emission_Delivery_fee_small",
+    "best_emission_Delivery_fee_Medium",
+    "best_emission_Delivery_fee_Large",
+    "best_emission_Diesel_van_share",
+    "best_emission_Electic_van_share",
+    "best_emission_Micro_hub_with_bike",
+    "best_emission_Off_peak_delivery",
+    "best_emission_Signature",
+    "best_emission_redlivery",
+    "best_emission_Tracking",
+    "best_emission_Insurance",
 ]
 
 # ---- Google Sheets helpers ----
@@ -85,7 +120,6 @@ def _load_players_with_rows() -> dict:
         players[email_key] = r
     return players
 
-
 def _write_player_record(rec: dict):
     """
     Insert or update a single player record in Google Sheets.
@@ -100,12 +134,11 @@ def _write_player_record(rec: dict):
 
     if existing and "_row" in existing:
         row_num = existing["_row"]
-        # Update existing row
-        ws.update(f"A{row_num}:G{row_num}", [values])
+        # Update existing row starting from column A; width is inferred from values
+        ws.update(f"A{row_num}", [values])
     else:
         # Append new row
         ws.append_row(values)
-
 
 def get_or_create_player(email: str) -> dict:
     """
@@ -116,28 +149,32 @@ def get_or_create_player(email: str) -> dict:
     now = datetime.utcnow().isoformat(timespec="seconds")
 
     if email_key in players:
-        rec = players[email_key]
+        rec = players(email_key)
     else:
-        rec = {
-            "email": email_key,
-            "created_at": now,
-            "updated_at": now,
-            "best_profit_one_year": "",
-            "best_profit_round_id": "",
-            "best_emission_one_year": "",
-            "best_emission_round_id": "",
-        }
+        # initialise all PLAYER_FIELDS as empty strings
+        rec = {f: "" for f in PLAYER_FIELDS}
+        rec["email"] = email_key
+        rec["created_at"] = now
+        rec["updated_at"] = now
         _write_player_record(rec)
 
-    # make sure we return a copy without _row
     clean = {k: v for k, v in rec.items() if k != "_row"}
     return clean
 
-
-def update_player_best(email: str, *, round_id: int,
-                       profit_one_year: float, emission_one_year: float) -> bool:
+def update_player_best(
+    email: str,
+    *,
+    round_id: int,
+    profit_one_year: float,
+    emission_one_year: float,
+    row: Optional[dict] = None,
+    latest_inputs: Optional[pd.Series] = None,
+) -> bool:
     """
-    Update highest profit (1Y) and lowest emission (1Y) for this player if improved.
+    Update:
+      - highest profit (1Y total)
+      - lowest emission (1Y total)
+      - best profit/emission per parcel + their attributes
     Returns True if something changed.
     """
     email_key = email.strip().lower()
@@ -147,44 +184,162 @@ def update_player_best(email: str, *, round_id: int,
     if email_key in players:
         rec = players[email_key]
     else:
-        rec = {
-            "email": email_key,
-            "created_at": now,
-            "updated_at": now,
-            "best_profit_one_year": "",
-            "best_profit_round_id": "",
-            "best_emission_one_year": "",
-            "best_emission_round_id": "",
-        }
+        rec = {f: "" for f in PLAYER_FIELDS}
+        rec["email"] = email_key
+        rec["created_at"] = now
 
     changed = False
 
-    # Highest profit (1Y)
+    # ---------- Existing: best TOTAL profit (1Y) ----------
     try:
         prev_profit = float(rec.get("best_profit_one_year", ""))
     except Exception:
         prev_profit = float("-inf")
+
     if profit_one_year > prev_profit:
         rec["best_profit_one_year"] = f"{profit_one_year:.6g}"
         rec["best_profit_round_id"] = str(round_id)
         changed = True
 
-    # Lowest emission (1Y)
+    # ---------- Existing: best TOTAL emission (1Y) ----------
     try:
         prev_emis = float(rec.get("best_emission_one_year", ""))
     except Exception:
         prev_emis = float("inf")
+
     if emission_one_year < prev_emis:
         rec["best_emission_one_year"] = f"{emission_one_year:.6g}"
         rec["best_emission_round_id"] = str(round_id)
         changed = True
+
+    # ---------- NEW: per-parcel metrics ----------
+    profit_per = None
+    emis_per = None
+
+    if row is not None:
+        try:
+            if "Total_demand_one_year" in row:
+                demand_1y = float(row["Total_demand_one_year"])
+            elif "Total_demand" in row:
+                demand_1y = float(row["Total_demand"]) * 365.0
+            else:
+                demand_1y = 0.0
+        except Exception:
+            demand_1y = 0.0
+
+        if demand_1y > 0:
+            profit_per = profit_one_year / demand_1y
+            emis_per = emission_one_year / demand_1y
+
+    # ---- Best PROFIT per parcel + attributes ----
+    if profit_per is not None:
+        try:
+            prev_profit_per = float(rec.get("best_profit_per_parcel", ""))
+        except Exception:
+            prev_profit_per = float("-inf")
+
+        if profit_per > prev_profit_per:
+            rec["best_profit_per_parcel"] = f"{profit_per:.6g}"
+
+            if latest_inputs is not None:
+                rec["best_profit_Next_vs_standard_increase"] = latest_inputs.get(
+                    "Next_day_delivery_increase", ""
+                )
+                rec["best_profit_Same_vs_standard_increase"] = latest_inputs.get(
+                    "Same_day_delivery_increase", ""
+                )
+                rec["best_profit_Delivery_fee_small"] = latest_inputs.get(
+                    "Delivery_fee_small", ""
+                )
+                rec["best_profit_Delivery_fee_Medium"] = latest_inputs.get(
+                    "Medium_parcels_delivery_fee", ""
+                )
+                rec["best_profit_Delivery_fee_Large"] = latest_inputs.get(
+                    "Large_parcels_delivery_fee", ""
+                )
+                rec["best_profit_Diesel_van_share"] = latest_inputs.get(
+                    "Share_of_diesel_vans", ""
+                )
+                rec["best_profit_Electic_van_share"] = latest_inputs.get(
+                    "Share_of_electric_vans", ""
+                )
+                rec["best_profit_Micro_hub_with_bike"] = latest_inputs.get(
+                    "Microhub_delivery", ""
+                )
+                rec["best_profit_Off_peak_delivery"] = latest_inputs.get(
+                    "Offpeak_delivery", ""
+                )
+                rec["best_profit_Signature"] = latest_inputs.get(
+                    "Signature_required", ""
+                )
+                rec["best_profit_redlivery"] = latest_inputs.get(
+                    "Redelivery", ""
+                )
+                rec["best_profit_Tracking"] = latest_inputs.get(
+                    "Tracking", ""
+                )
+                rec["best_profit_Insurance"] = latest_inputs.get(
+                    "Insurance", ""
+                )
+            changed = True
+
+    # ---- Best EMISSION per parcel + attributes ----
+    if emis_per is not None:
+        try:
+            prev_emis_per = float(rec.get("best_emission_per_parcel", ""))
+        except Exception:
+            prev_emis_per = float("inf")
+
+        if emis_per < prev_emis_per:
+            rec["best_emission_per_parcel"] = f"{emis_per:.6g}"
+
+            if latest_inputs is not None:
+                rec["best_emission_Next_vs_standard_increase"] = latest_inputs.get(
+                    "Next_day_delivery_increase", ""
+                )
+                rec["best_emission_Same_vs_standard_increase"] = latest_inputs.get(
+                    "Same_day_delivery_increase", ""
+                )
+                rec["best_emission_Delivery_fee_small"] = latest_inputs.get(
+                    "Delivery_fee_small", ""
+                )
+                rec["best_emission_Delivery_fee_Medium"] = latest_inputs.get(
+                    "Medium_parcels_delivery_fee", ""
+                )
+                rec["best_emission_Delivery_fee_Large"] = latest_inputs.get(
+                    "Large_parcels_delivery_fee", ""
+                )
+                rec["best_emission_Diesel_van_share"] = latest_inputs.get(
+                    "Share_of_diesel_vans", ""
+                )
+                rec["best_emission_Electic_van_share"] = latest_inputs.get(
+                    "Share_of_electric_vans", ""
+                )
+                rec["best_emission_Micro_hub_with_bike"] = latest_inputs.get(
+                    "Microhub_delivery", ""
+                )
+                rec["best_emission_Off_peak_delivery"] = latest_inputs.get(
+                    "Offpeak_delivery", ""
+                )
+                rec["best_emission_Signature"] = latest_inputs.get(
+                    "Signature_required", ""
+                )
+                rec["best_emission_redlivery"] = latest_inputs.get(
+                    "Redelivery", ""
+                )
+                rec["best_emission_Tracking"] = latest_inputs.get(
+                    "Tracking", ""
+                )
+                rec["best_emission_Insurance"] = latest_inputs.get(
+                    "Insurance", ""
+                )
+            changed = True
 
     if changed:
         rec["updated_at"] = now
         _write_player_record(rec)
 
     return changed
-
 
 # ---------- Background helpers ----------
 
@@ -508,10 +663,8 @@ def render_carrier():
         rec = get_or_create_player(player_email)
         st.caption(
             f"Player: **{player_email}** | "
-            f"Best profit (1Y): {rec.get('best_profit_one_year') or '—'} "
-            f"(Round {rec.get('best_profit_round_id') or '—'}) • "
-            f"Lowest emission (1Y): {rec.get('best_emission_one_year') or '—'} "
-            f"(Round {rec.get('best_emission_round_id') or '—'})"
+            f"Best profit per parcel: {rec.get('best_profit_per_parcel') or '—'} • "
+            f"Lowest emission per parcel: {rec.get('best_emission_per_parcel') or '—'}"
         )
     else:
         st.warning("⚠️ No email detected. Go back and enter your email to track your results.")
@@ -804,7 +957,7 @@ def render_carrier():
             st.session_state.current_round = curr + 1
             st.success(f"Round {curr} appended.")
 
-            # --- Update best profit / emission for this player ---
+            # --- Update best profit / emission (totals + per parcel + attributes) ---
             if player_email:
                 try:
                     update_player_best(
@@ -812,6 +965,8 @@ def render_carrier():
                         round_id=int(row["Round ID"]),
                         profit_one_year=float(row["Total_profit_one_year"]),
                         emission_one_year=float(row["Total_emission_one_year"]),
+                        row=row,
+                        latest_inputs=latest_inputs_series,
                     )
                 except Exception as e:
                     st.warning("Could not update player leaderboard.")
@@ -874,3 +1029,4 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
