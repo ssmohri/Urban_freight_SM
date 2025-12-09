@@ -155,7 +155,8 @@ def get_or_create_player(email: str) -> dict:
     now = datetime.utcnow().isoformat(timespec="seconds")
 
     if email_key in players:
-        rec = players(email_key)
+        # ✅ FIX: use dict indexing, not a function call
+        rec = players[email_key]
     else:
         # initialise all PLAYER_FIELDS as empty strings
         rec = {f: "" for f in PLAYER_FIELDS}
@@ -164,6 +165,7 @@ def get_or_create_player(email: str) -> dict:
         rec["updated_at"] = now
         _write_player_record(rec)
 
+    # return a copy without the internal row marker
     clean = {k: v for k, v in rec.items() if k != "_row"}
     return clean
 
@@ -1035,5 +1037,6 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
