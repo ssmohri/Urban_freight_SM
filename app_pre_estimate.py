@@ -130,41 +130,41 @@ def _load_players_with_rows() -> dict:
         players[email_key] = r
     return players
 
-@st.cache_data
-def load_players_leaderboard_df(refresh_key: int = 0) -> pd.DataFrame:
+def load_players_leaderboard_df() -> pd.DataFrame:
     """
-    Return a DataFrame with columns:
+    Load all players that have numeric best_*_per_parcel values
+    from Google Sheets into a DataFrame with columns:
       email, profit_per, emission_per
-    for all players that have numeric best_*_per_parcel values.
     """
-    players = _load_players_with_rows()
-    rows = []
+    ws = get_players_worksheet()
+    rows = ws.get_all_records(expected_headers=PLAYER_FIELDS)
 
-    for email, rec in players.items():
-        # rec values are strings; try to parse to float
-        p_raw = rec.get("best_profit_per_parcel", "")
-        e_raw = rec.get("best_emission_per_parcel", "")
-        try:
-            p = float(p_raw)
-            e = float(e_raw)
-        except Exception:
-            continue  # skip players without valid numbers
-
-        if not (math.isfinite(p) and math.isfinite(e)):
+    records = []
+    for r in rows:
+        email = str(r.get("email", "")).strip().lower()
+        if not email:
             continue
 
-        rows.append(
+        try:
+            profit_per = float(r.get("best_profit_per_parcel", ""))
+            emis_per = float(r.get("best_emission_per_parcel", ""))
+        except Exception:
+            # Skip rows that don't have valid per-parcel numbers yet
+            continue
+
+        records.append(
             {
                 "email": email,
-                "profit_per": p,
-                "emission_per": e,
+                "profit_per": profit_per,
+                "emission_per": emis_per,
             }
         )
 
-    if not rows:
+    if not records:
         return pd.DataFrame(columns=["email", "profit_per", "emission_per"])
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(records)
+
 
 def _write_player_record(rec: dict):
     """
@@ -706,7 +706,42 @@ def render_home():
                 unsafe_allow_html=True,
             )
 
+def _get_current_player_point_from_rounds(player_email: str) -> Optional[dict]:
+    """
+    Compute current player's (profit_per, emission_per) from the latest round
+    in st.session_state.rounds_results, if possible.
+    """
+    df = st.session_state.get("rounds_results", pd.DataFrame())
+    if df.empty:
+        return None
 
+    last = df.iloc[-1]
+
+    try:
+        if "Total_demand_one_year" in last:
+            demand_1y = float(last["Total_demand_one_year"])
+        elif "Total_demand" in last:
+            demand_1y = float(last["Total_demand"]) * 365.0
+        else:
+            demand_1y = 0.0
+    except Exception:
+        demand_1y = 0.0
+
+    if demand_1y <= 0:
+        return None
+
+    try:
+        profit_1y = float(last["Total_profit_one_year"])
+        emis_1y = float(last["Total_emission_one_year"])
+    except Exception:
+        return None
+
+    return {
+        "email": player_email.strip().lower(),
+        "profit_per": profit_1y / demand_1y,
+        "emission_per": emis_1y / demand_1y,
+    }
+    
 # ---------- Carrier ----------
 
 def render_carrier():
@@ -1073,31 +1108,64 @@ def render_carrier():
             else:
                 try:
                     refresh_key = st.session_state.get("leaderboard_refresh", 0)
-                    df_players = load_players_leaderboard_df(refresh_key)
+                    df_players = load_players_leaderboard_df()
                 except Exception as e:
                     st.warning("Could not load leaderboard data from Google Sheets.")
                     st.exception(e)
                     df_players = pd.DataFrame()
 
     
-                if df_players.empty:
+                # 👇 NEW BLOCK STARTS HERE
+                cur_point = _get_current_player_point_from_rounds(player_email)
+                
+                # If absolutely nothing and no current point, just explain
+                if df_players.empty and cur_point is None:
                     st.info("No leaderboard data yet. Run at least one round so results can be stored.")
-                elif player_email.lower() not in df_players["email"].str.lower().values:
-                    st.info(
-                        "We don't have per-parcel records for this email yet. "
-                        "Run a round so your best profit and emission per parcel can be saved."
-                    )
                 else:
-                    # Normalise email matching (case-insensitive)
-                    # Add a canonical key column
+                    # Work on a copy
                     df_players = df_players.copy()
                     df_players["email_key"] = df_players["email"].str.lower()
                     current_key = player_email.strip().lower()
-                    current_row = df_players.loc[df_players["email_key"] == current_key].iloc[0]
-    
+                
+                    # If we have a fresh point from the current session, override / insert it
+                    if cur_point is not None:
+                        # Remove any old row for this email
+                        df_players = df_players[df_players["email_key"] != current_key]
+                
+                        # Append the up-to-date point for this player
+                        df_players = pd.concat(
+                            [
+                                df_players,
+                                pd.DataFrame(
+                                    [
+                                        {
+                                            "email": cur_point["email"],
+                                            "profit_per": cur_point["profit_per"],
+                                            "emission_per": cur_point["emission_per"],
+                                            "email_key": current_key,
+                                        }
+                                    ]
+                                ),
+                            ],
+                            ignore_index=True,
+                        )
+                
+                    # We only want rows that actually have both metrics
+                    df_players = df_players.dropna(subset=["profit_per", "emission_per"])
+                
+                    # If at this point we still don't have a row for this email, tell them to run a round
+                    current_rows = df_players.loc[df_players["email_key"] == current_key]
+                    if current_rows.empty:
+                        st.info(
+                            "We don't have per-parcel records for this email yet. "
+                            "Run a round so your best profit and emission per parcel can be saved."
+                        )
+                        return  # stop rendering the chart for now
+                
+                    current_row = current_rows.iloc[0]
                     cur_profit = current_row["profit_per"]
                     cur_emission = current_row["emission_per"]
-    
+                
                     def classify(row):
                         if row["email_key"] == current_key:
                             return "Current player"
@@ -1109,9 +1177,9 @@ def render_carrier():
                             return "Worse on both"
                         # Mixed / trade-off
                         return "Trade-off"
-    
+                
                     df_players["category"] = df_players.apply(classify, axis=1)
-    
+                
                     base = (
                         alt.Chart(df_players)
                         .encode(
@@ -1125,6 +1193,8 @@ def render_carrier():
                             ),
                         )
                     )
+                # 👆 NEW BLOCK ENDS HERE
+
     
                     # Current player: red fill, thin black border
                     layer_current = base.transform_filter(
@@ -1206,6 +1276,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
