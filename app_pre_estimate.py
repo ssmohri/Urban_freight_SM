@@ -2,7 +2,8 @@
 
 from pathlib import Path
 from typing import Optional
-
+import math
+import altair as alt
 import pandas as pd
 import streamlit as st
 from base64 import b64encode
@@ -129,6 +130,41 @@ def _load_players_with_rows() -> dict:
         players[email_key] = r
     return players
 
+@st.cache_data
+def load_players_leaderboard_df() -> pd.DataFrame:
+    """
+    Return a DataFrame with columns:
+      email, profit_per, emission_per
+    for all players that have numeric best_*_per_parcel values.
+    """
+    players = _load_players_with_rows()
+    rows = []
+
+    for email, rec in players.items():
+        # rec values are strings; try to parse to float
+        p_raw = rec.get("best_profit_per_parcel", "")
+        e_raw = rec.get("best_emission_per_parcel", "")
+        try:
+            p = float(p_raw)
+            e = float(e_raw)
+        except Exception:
+            continue  # skip players without valid numbers
+
+        if not (math.isfinite(p) and math.isfinite(e)):
+            continue
+
+        rows.append(
+            {
+                "email": email,
+                "profit_per": p,
+                "emission_per": e,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=["email", "profit_per", "emission_per"])
+
+    return pd.DataFrame(rows)
 
 def _write_player_record(rec: dict):
     """
@@ -1017,6 +1053,125 @@ def render_carrier():
                 )
                 tour_nav(prev_step=5, next_step=None)
 
+             # ===== Leaderboard: Profit vs Emission (per parcel) =====
+            st.markdown("---")
+            st.subheader("📈 Your position vs other players (per parcel)")
+    
+            if not player_email:
+                st.info("Enter the game with an email to see your position on the leaderboard.")
+            else:
+                try:
+                    df_players = load_players_leaderboard_df()
+                except Exception as e:
+                    st.warning("Could not load leaderboard data from Google Sheets.")
+                    st.exception(e)
+                    df_players = pd.DataFrame()
+    
+                if df_players.empty:
+                    st.info("No leaderboard data yet. Run at least one round so results can be stored.")
+                elif player_email.lower() not in df_players["email"].str.lower().values:
+                    st.info(
+                        "We don't have per-parcel records for this email yet. "
+                        "Run a round so your best profit and emission per parcel can be saved."
+                    )
+                else:
+                    # Normalise email matching (case-insensitive)
+                    # Add a canonical key column
+                    df_players = df_players.copy()
+                    df_players["email_key"] = df_players["email"].str.lower()
+                    current_key = player_email.strip().lower()
+                    current_row = df_players.loc[df_players["email_key"] == current_key].iloc[0]
+    
+                    cur_profit = current_row["profit_per"]
+                    cur_emission = current_row["emission_per"]
+    
+                    def classify(row):
+                        if row["email_key"] == current_key:
+                            return "Current player"
+                        # Better on both dimensions than current player
+                        if row["profit_per"] > cur_profit and row["emission_per"] < cur_emission:
+                            return "Better on both"
+                        # Worse on both dimensions than current player
+                        if row["profit_per"] < cur_profit and row["emission_per"] > cur_emission:
+                            return "Worse on both"
+                        # Mixed / trade-off
+                        return "Trade-off"
+    
+                    df_players["category"] = df_players.apply(classify, axis=1)
+    
+                    base = (
+                        alt.Chart(df_players)
+                        .encode(
+                            x=alt.X(
+                                "emission_per:Q",
+                                title="Best emission per parcel (lower is better)",
+                            ),
+                            y=alt.Y(
+                                "profit_per:Q",
+                                title="Best profit per parcel (higher is better)",
+                            ),
+                        )
+                    )
+    
+                    # Current player: red fill, thin black border
+                    layer_current = base.transform_filter(
+                        alt.datum.category == "Current player"
+                    ).mark_point(
+                        size=160,
+                        filled=True,
+                        color="red",
+                        stroke="black",
+                        strokeWidth=1,
+                    )
+    
+                    # Players that dominate the current player (better on both): black fill
+                    layer_better = base.transform_filter(
+                        alt.datum.category == "Better on both"
+                    ).mark_point(
+                        size=90,
+                        filled=True,
+                        color="black",
+                        stroke="black",
+                        strokeWidth=1,
+                    )
+    
+                    # Players dominated by current player (worse on both): light grey fill
+                    layer_worse = base.transform_filter(
+                        alt.datum.category == "Worse on both"
+                    ).mark_point(
+                        size=90,
+                        filled=True,
+                        color="#d3d3d3",  # light grey
+                        stroke="black",
+                        strokeWidth=1,
+                    )
+    
+                    # Trade-off players: white inside, black border
+                    layer_tradeoff = base.transform_filter(
+                        alt.datum.category == "Trade-off"
+                    ).mark_point(
+                        size=90,
+                        filled=True,
+                        color="white",
+                        stroke="black",
+                        strokeWidth=1,
+                    )
+    
+                    chart = (layer_tradeoff + layer_worse + layer_better + layer_current).properties(
+                        height=380
+                    )
+    
+                    st.altair_chart(chart, use_container_width=True)
+    
+                    with st.expander("How to read this chart", expanded=False):
+                        st.markdown(
+                            """
+                            - **Red dot**: your best combination (profit per parcel vs emission per parcel).  
+                            - **Black dots**: players who **dominate you** (higher profit *and* lower emissions).  
+                            - **Light grey dots**: players you **dominate** (lower profit *and* higher emissions).  
+                            - **White dots**: players with a **trade-off** relative to you (better in one metric, worse in the other).
+                            """
+                        )
 
 # ---------- Seatbelt ----------
 
@@ -1038,6 +1193,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
