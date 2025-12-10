@@ -131,7 +131,7 @@ def _load_players_with_rows() -> dict:
     return players
 
 @st.cache_data
-def load_players_leaderboard_df() -> pd.DataFrame:
+def load_players_leaderboard_df(refresh_key: int = 0) -> pd.DataFrame:
     """
     Return a DataFrame with columns:
       email, profit_per, emission_per
@@ -387,7 +387,18 @@ def update_player_best(
         rec["updated_at"] = now
         _write_player_record(rec)
 
+        # 🔁 bump leaderboard refresh counter so cached data is reloaded
+        try:
+            import streamlit as st
+            st.session_state["leaderboard_refresh"] = (
+                st.session_state.get("leaderboard_refresh", 0) + 1
+            )
+        except Exception:
+            # If not in a Streamlit context, just ignore
+            pass
+
     return changed
+
 
 # ---------- Background helpers ----------
 
@@ -1061,11 +1072,13 @@ def render_carrier():
                 st.info("Enter the game with an email to see your position on the leaderboard.")
             else:
                 try:
-                    df_players = load_players_leaderboard_df()
+                    refresh_key = st.session_state.get("leaderboard_refresh", 0)
+                    df_players = load_players_leaderboard_df(refresh_key)
                 except Exception as e:
                     st.warning("Could not load leaderboard data from Google Sheets.")
                     st.exception(e)
                     df_players = pd.DataFrame()
+
     
                 if df_players.empty:
                     st.info("No leaderboard data yet. Run at least one round so results can be stored.")
@@ -1193,6 +1206,7 @@ if st.session_state.get("page", "home") == "home":
     safe_render(render_home)
 else:
     safe_render(render_carrier)
+
 
 
 
